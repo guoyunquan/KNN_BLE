@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * API控制器，提供BLE定位相关的REST接口
@@ -99,36 +100,57 @@ public class ApiController {
      */
     @PostMapping("/predict")
     public ResponseEntity<PredictResponse> predict(@RequestBody PredictPayload payload) {
-        try {
-            // 参数校验
-            if (payload.getBeacons() == null || payload.getBeacons().isEmpty()) {
-                return ResponseEntity.badRequest().body(new PredictResponse());
+        HashMap<Object, Object> hashMap = new HashMap<>();
+        HashMap<Object, Object> result = new HashMap<>();
+        //预处理数据
+        // 1) 过滤 RSSI：(-85, 0) 区间
+        List<BeaconReading> list = payload.getBeacons();
+        List<BeaconReading> readings = list.stream()
+                .filter(item -> item.getRssi() < 0 && item.getRssi() > -85)
+                .toList();
+        readings.forEach(item -> {
+            String key = buildKey(item);
+            hashMap.put(key, item.getRssi());
+        });
+     jsonStorageService.loadAllData().forEach((key, map) -> {
+         Set<String> keys = map.keySet();
+         String jsonString = JSON.toJSONString(map);
+         String jsonString1 = JSON.toJSONString(hashMap);
+         Double v = SimilarityMetricsDemo.cosDouble(jsonString1, jsonString);
+         System.out.println(key + ":" + v);
+         result.put(key, v);
+     });
+
+
+        // 转换为 List
+        List<Map.Entry<Object, Object>> listA = new ArrayList<>(result.entrySet());
+
+        // 排序（从大到小）
+        Collections.sort(listA, new Comparator<Map.Entry<Object, Object>>() {
+            @Override
+            public int compare(Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) {
+                Double v1 = (Double) o1.getValue();
+                Double v2 = (Double) o2.getValue();
+                return v2.compareTo(v1); // 从大到小
             }
-            
-            // 转换为Map格式
-            List<Map<String, Object>> beacons = new ArrayList<>();
-            for (BeaconReading beacon : payload.getBeacons()) {
-                Map<String, Object> beaconMap = new HashMap<>();
-                beaconMap.put("uuid", beacon.getUuid());
-                beaconMap.put("major", beacon.getMajor());
-                beaconMap.put("minor", beacon.getMinor());
-                beaconMap.put("rssi", beacon.getRssi());
-                beacons.add(beaconMap);
-            }
-            
-            // 进行预测
-            PredictResponse response = knnService.predict(beacons);
-            
-//            log.info("区域预测完成，Top-1: {}, Top-3的值: {}",
-//                    response.getRegionTop1(),
-//                    response.getRegionTop3());
-            
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            log.error("区域预测失败", e);
-            return ResponseEntity.internalServerError().body(new PredictResponse());
+        });
+
+        // 打印排序结果
+        System.out.println("排序后：");
+        for (Map.Entry<Object, Object> entry : listA) {
+            System.out.printf("%s => %.2f%n", entry.getKey(), (Double) entry.getValue());
         }
+
+        // 如果需要一个保持顺序的 Map
+        Map<Object, Object> sortedMap = new LinkedHashMap<>();
+        for (Map.Entry<Object, Object> entry : listA) {
+            sortedMap.put(entry.getKey(), entry.getValue());
+        }
+        System.out.println("\n有序 Map: " + sortedMap);
+
+
+//        SimilarityMetricsDemo.cosDouble(readings,)
+        return null;
     }
     
     /**
@@ -324,35 +346,106 @@ public class ApiController {
     }
 
 
-    public static void main(String[] args) {
-        String value = "{\n" +
-                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1012_10835\" : -63.0,\n" +
-                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1063_10835\" : -68.0,\n" +
-                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1100_10835\" : -73.0,\n" +
-                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1045_10835\" : -62.0,\n" +
-                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1094_10835\" : -60.5,\n" +
-                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1050_10835\" : -67.5,\n" +
-                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1040_10835\" : -68.0\n" +
-                "  }";
-        String value1 = "{\n" +
-                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1063_10835\" : -67.0,\n" +
-                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1012_10835\" : -68.0,\n" +
-                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1100_10835\" : -70.0,\n" +
-                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1045_10835\" : -74.0,\n" +
-                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1094_10835\" : -78.0,\n" +
-                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1050_10835\" : -68.0,\n" +
-                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1040_10835\" : -56.0\n" +
-                "   }";
 
-        // 计算并打印相似度
-        double similarity = calculateJsonSimilarityWithCommonKeys(value, value1);
-        System.out.println("基于共同ID的余弦相似度为: " + similarity);
 
-        // 打印共同ID（可选）
-        Set<String> commonKeys = getCommonKeys(value, value1);
-        System.out.println("共同ID数量: " + commonKeys.size());
-        System.out.println("共同ID: " + commonKeys);
-    }
+        public static void main(String[] args) {
+            String value = "{\n" +
+                    "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1012_10835\" : -63.0,\n" +
+                    "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1063_10835\" : -68.0,\n" +
+                    "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1100_10835\" : -73.0,\n" +
+                    "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1045_10835\" : -62.0,\n" +
+                    "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1094_10835\" : -60.5,\n" +
+                    "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1050_10835\" : -67.5,\n" +
+                    "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1040_10835\" : -68.0\n" +
+                    "  }";
+
+            String value1 = "{\n" +
+                    "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1063_10835\" : -67.0,\n" +
+                    "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1012_10835\" : -68.0,\n" +
+                    "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1100_10835\" : -70.0,\n" +
+                    "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1045_10835\" : -74.0,\n" +
+                    "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1094_10835\" : -78.0,\n" +
+                    "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1050_10835\" : -68.0,\n" +
+                    "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1040_10835\" : -56.0\n" +
+                    "   }";
+
+            // 1) 解析为 Map
+            Map<String, Double> mapA = parseToMap(value);
+            Map<String, Double> mapB = parseToMap(value1);
+
+            // 2) 取共同 key，并排序，保证两边一致对齐
+            List<String> commonKeysSorted = getCommonKeysSorted(mapA, mapB);
+
+            // 3) 构造向量
+            double[] vecA = toVector(mapA, commonKeysSorted);
+            double[] vecB = toVector(mapB, commonKeysSorted);
+
+            // 4) 计算余弦相似度
+            double similarity = cosine(vecA, vecB);
+
+            // 输出
+            System.out.println("共同ID数量: " + commonKeysSorted.size());
+            System.out.println("共同ID(排序后): " + commonKeysSorted);
+            System.out.println("基于共同ID的余弦相似度为: " + similarity);
+
+            // 额外：打印对齐后的值，便于人工核验
+            System.out.println("\n对齐后的 (key, A, B)：");
+            for (String k : commonKeysSorted) {
+                System.out.printf("%s => A: %s, B: %s%n", k, mapA.get(k), mapB.get(k));
+            }
+        }
+
+        /** 将 JSON 字符串解析为 Map<String, Double>（仅保留数值项） */
+        public static Map<String, Double> parseToMap(String jsonStr) {
+            JSONObject obj = JSON.parseObject(jsonStr);
+            Map<String, Double> map = new HashMap<>();
+            for (Map.Entry<String, Object> e : obj.entrySet()) {
+                Object v = e.getValue();
+                if (v instanceof Number) {
+                    map.put(e.getKey(), ((Number) v).doubleValue());
+                } else if (v instanceof String) {
+                    // 兜底：尝试把字符串转 double
+                    try {
+                        map.put(e.getKey(), Double.parseDouble((String) v));
+                    } catch (NumberFormatException ignore) {
+                    }
+                }
+            }
+            return map;
+        }
+
+        /** 求共同 key，并进行字典序排序，保证向量对齐的一致性 */
+        public static List<String> getCommonKeysSorted(Map<String, Double> a, Map<String, Double> b) {
+            return a.keySet().stream()
+                    .filter(b::containsKey)
+                    .sorted() // 关键：排序！
+                    .collect(Collectors.toList());
+        }
+
+        /** 按给定顺序将 Map 映射为向量 */
+        public static double[] toVector(Map<String, Double> map, List<String> orderedKeys) {
+            double[] v = new double[orderedKeys.size()];
+            for (int i = 0; i < orderedKeys.size(); i++) {
+                String k = orderedKeys.get(i);
+                // 这里用交集后理论上都存在；为了健壮性，缺失则按 0 处理
+                v[i] = map.getOrDefault(k, 0.0);
+            }
+            return v;
+        }
+
+        /** 余弦相似度：[-1, 1] */
+        public static double cosine(double[] a, double[] b) {
+            if (a == null || b == null) throw new IllegalArgumentException("向量不能为 null");
+            if (a.length != b.length) throw new IllegalArgumentException("向量长度必须相同");
+            double dot = 0.0, na = 0.0, nb = 0.0;
+            for (int i = 0; i < a.length; i++) {
+                dot += a[i] * b[i];
+                na += a[i] * a[i];
+                nb += b[i] * b[i];
+            }
+            if (na == 0 || nb == 0) return 0.0;
+            return dot / (Math.sqrt(na) * Math.sqrt(nb));
+        }
 
     /**
      * 获取两个JSON中的共同ID（交集）
@@ -483,5 +576,5 @@ public class ApiController {
 
         return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
+    }
 
-}

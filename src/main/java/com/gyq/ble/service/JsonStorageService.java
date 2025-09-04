@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * JSON 存储服务，用于保存和读取 medianMap 数据
@@ -115,5 +116,11 @@ public class JsonStorageService {
      */
     public java.util.Set<String> getAllKeys() {
         return loadAllData().keySet();
+    }
+
+    public static void main(String[] args) {
+        JsonStorageService jsonStorageService = new JsonStorageService();
+        Map<String, Map<String, Double>> stringMapMap = jsonStorageService.loadAllData();
+        System.out.println(stringMapMap);
     }
 }
