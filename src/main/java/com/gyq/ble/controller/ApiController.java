@@ -1,5 +1,7 @@
 package com.gyq.ble.controller;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.gyq.ble.model.*;
 import com.gyq.ble.service.DatasetService;
 import com.gyq.ble.service.JsonStorageService;
@@ -21,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ApiController {
     private final static ConcurrentHashMap<Integer, List<BeaconReading>> map = new ConcurrentHashMap<>();
     private final static ConcurrentHashMap<String,Integer> countMap = new ConcurrentHashMap<>();
+    private final static ConcurrentHashMap<String,Integer> nameMap = new ConcurrentHashMap<>();
     
     @Autowired
     private DatasetService datasetService;
@@ -232,8 +235,10 @@ public class ApiController {
             // 3.5 打印结果（可替换为返回前端或写库）
             log.info("各 beacon 的 RSSI 中位数结果：{}", medianMap);
 
+            nameMap.put(bleDto.getRegional(),nameMap.getOrDefault(bleDto.getRegional(),0)+1);
+            log.info("{}号区域，第{}次",bleDto.getRegional(),nameMap.get(bleDto.getRegional()));
             // 3.6 保存 medianMap 数据到本地 JSON 文件
-            String storageKey = bleDto.getRegional() + "_" + bleDto.getCount();
+            String storageKey = bleDto.getRegional() + "_" + nameMap.get(bleDto.getRegional());
             jsonStorageService.saveMedianData(storageKey, medianMap);
             log.info("已保存 medianMap 数据到 JSON 文件，key: {}", storageKey);
 
@@ -241,9 +246,14 @@ public class ApiController {
              map.clear();
              countMap.clear();
         }
-
         return ResponseEntity.ok().build();
     }
+
+//    @PostMapping("/getTopk")
+//    public ResponseEntity<Void> getTopk(BeaconDto beaconDto)
+//
+//
+//    }
 
     /** 组装唯一 key：uuid_minor_major */
     private static String buildKey(BeaconReading item) {
@@ -311,6 +321,167 @@ public class ApiController {
             log.error("删除 medianMap 数据失败，key: {}", key, e);
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+
+    public static void main(String[] args) {
+        String value = "{\n" +
+                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1012_10835\" : -63.0,\n" +
+                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1063_10835\" : -68.0,\n" +
+                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1100_10835\" : -73.0,\n" +
+                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1045_10835\" : -62.0,\n" +
+                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1094_10835\" : -60.5,\n" +
+                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1050_10835\" : -67.5,\n" +
+                "    \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1040_10835\" : -68.0\n" +
+                "  }";
+        String value1 = "{\n" +
+                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1063_10835\" : -67.0,\n" +
+                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1012_10835\" : -68.0,\n" +
+                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1100_10835\" : -70.0,\n" +
+                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1045_10835\" : -74.0,\n" +
+                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1094_10835\" : -78.0,\n" +
+                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1050_10835\" : -68.0,\n" +
+                "     \"FDA50693-A4E2-4FB1-AFCF-C6EB07647825_1040_10835\" : -56.0\n" +
+                "   }";
+
+        // 计算并打印相似度
+        double similarity = calculateJsonSimilarityWithCommonKeys(value, value1);
+        System.out.println("基于共同ID的余弦相似度为: " + similarity);
+
+        // 打印共同ID（可选）
+        Set<String> commonKeys = getCommonKeys(value, value1);
+        System.out.println("共同ID数量: " + commonKeys.size());
+        System.out.println("共同ID: " + commonKeys);
+    }
+
+    /**
+     * 获取两个JSON中的共同ID（交集）
+     * @param jsonStr1 第一个JSON字符串
+     * @param jsonStr2 第二个JSON字符串
+     * @return 共同ID的集合
+     */
+    public static Set<String> getCommonKeys(String jsonStr1, String jsonStr2) {
+        JSONObject json1 = JSON.parseObject(jsonStr1);
+        JSONObject json2 = JSON.parseObject(jsonStr2);
+
+        // 获取两个JSON的所有键
+        Set<String> keys1 = json1.keySet();
+        Set<String> keys2 = json2.keySet();
+
+        // 求交集
+        Set<String> commonKeys = new HashSet<>(keys1);
+        commonKeys.retainAll(keys2);
+
+        return commonKeys;
+    }
+
+    /**
+     * 根据共同ID将JSON转换为向量
+     * @param jsonStr JSON字符串
+     * @param commonKeys 共同ID的集合
+     * @return 按照共同ID顺序排列的向量
+     */
+    public static double[] jsonToVectorWithCommonKeys(String jsonStr, Set<String> commonKeys) {
+        JSONObject jsonObject = JSON.parseObject(jsonStr);
+
+        // 创建向量
+        double[] vector = new double[commonKeys.size()];
+        int index = 0;
+
+        // 按照共同ID的顺序填充向量
+        for (String key : commonKeys) {
+            vector[index++] = ((Number) jsonObject.get(key)).doubleValue();
+        }
+
+        return vector;
+    }
+
+    /**
+     * 计算两个向量的余弦相似度
+     * @param vectorA 第一个向量
+     * @param vectorB 第二个向量
+     * @return 余弦相似度值，范围在[-1,1]之间
+     * @throws IllegalArgumentException 如果向量长度不同或为空
+     */
+    public static double calculateCosineSimilarity(double[] vectorA, double[] vectorB) {
+        // 检查向量是否为空
+        if (vectorA == null || vectorB == null) {
+            throw new IllegalArgumentException(";向量不能为null");
+        }
+
+        // 检查向量长度是否相同
+        if (vectorA.length != vectorB.length) {
+            throw new IllegalArgumentException(";向量长度必须相同");
+        }
+
+        double dotProduct = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+
+        for (int i = 0; i < vectorA.length; i++) {
+            dotProduct += vectorA[i] * vectorB[i];
+            normA += Math.pow(vectorA[i], 2);
+            normB += Math.pow(vectorB[i], 2);
+        }
+
+        // 避免除以零
+        if (normA == 0 || normB == 0) {
+            return 0.0;
+        }
+
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    /**
+     * 计算两个JSON字符串基于共同ID的余弦相似度
+     * @param jsonStr1 第一个JSON字符串
+     * @param jsonStr2 第二个JSON字符串
+     * @return 余弦相似度值
+     */
+    public static double calculateJsonSimilarityWithCommonKeys(String jsonStr1, String jsonStr2) {
+        // 获取共同ID
+        Set<String> commonKeys = getCommonKeys(jsonStr1, jsonStr2);
+
+        // 如果没有共同ID，返回0
+        if (commonKeys.isEmpty()) {
+            return 0.0;
+        }
+
+        // 转换为向量
+        double[] vector1 = jsonToVectorWithCommonKeys(jsonStr1, commonKeys);
+        double[] vector2 = jsonToVectorWithCommonKeys(jsonStr2, commonKeys);
+
+        // 计算相似度
+        return calculateCosineSimilarity(vector1, vector2);
+    }
+
+    public static double calculate(double[] vectorA, double[] vectorB) {
+        // 检查向量是否为空
+        if (vectorA == null || vectorB == null) {
+            throw new IllegalArgumentException("向量不能为null");
+        }
+
+        // 检查向量长度是否相同
+        if (vectorA.length != vectorB.length) {
+            throw new IllegalArgumentException("向量长度必须相同");
+        }
+
+        double dotProduct = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+
+        for (int i = 0; i < vectorA.length; i++) {
+            dotProduct += vectorA[i] * vectorB[i];
+            normA += Math.pow(vectorA[i], 2);
+            normB += Math.pow(vectorB[i], 2);
+        }
+
+        // 避免除以零
+        if (normA == 0 || normB == 0) {
+            return 0.0;
+        }
+
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
 }

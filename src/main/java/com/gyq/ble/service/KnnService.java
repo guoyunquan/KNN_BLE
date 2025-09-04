@@ -1,5 +1,6 @@
 package com.gyq.ble.service;
 
+import com.gyq.ble.model.BeaconReading;
 import com.gyq.ble.model.PredictResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,13 @@ public class KnnService {
     
     @Autowired
     private DatasetService datasetService;
+
+    @Autowired
+    private JsonStorageService jsonStorageService;
+
+//    public PredictResponse predictZone(List<BeaconReading> input) {
+//
+//    }
     
     /**
      * 预测区域

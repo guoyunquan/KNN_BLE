@@ -11,9 +11,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * @author gyq
  */
 @SpringBootApplication
-public class BleLocatorApplication {
+public class BleApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(BleLocatorApplication.class, args);
+        SpringApplication.run(BleApplication.class, args);
     }
 }
