@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ble-locator
+  
+logging:
+  level:
+    com.gyq.ble: INFO
+    root: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# 数据集配置
+dataset:
+  file: abc.csv
+  rssi-pad: -100.0
+
+# KNN配置
+knn:
+  k: 5
