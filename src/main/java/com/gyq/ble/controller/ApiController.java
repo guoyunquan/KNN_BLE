@@ -113,12 +113,17 @@ public class ApiController {
             hashMap.put(key, item.getRssi());
         });
      jsonStorageService.loadAllData().forEach((key, map) -> {
-         Set<String> keys = map.keySet();
          String jsonString = JSON.toJSONString(map);
          String jsonString1 = JSON.toJSONString(hashMap);
          Double v = SimilarityMetricsDemo.cosDouble(jsonString1, jsonString);
          System.out.println(key + ":" + v);
-         result.put(key, v);
+         
+         // 只有当相似度不为 null 时才添加到结果中
+         if (v != null) {
+             result.put(key, v);
+         } else {
+             System.out.println("警告: " + key + " 的相似度计算结果为 null，跳过此结果");
+         }
      });
 
 
@@ -131,6 +136,12 @@ public class ApiController {
             public int compare(Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) {
                 Double v1 = (Double) o1.getValue();
                 Double v2 = (Double) o2.getValue();
+                
+                // 处理 null 值：null 值排在最后
+                if (v1 == null && v2 == null) return 0;
+                if (v1 == null) return 1;  // v1 为 null，排在后面
+                if (v2 == null) return -1; // v2 为 null，v1 排在前面
+                
                 return v2.compareTo(v1); // 从大到小
             }
         });
@@ -138,7 +149,12 @@ public class ApiController {
         // 打印排序结果
         System.out.println("排序后：");
         for (Map.Entry<Object, Object> entry : listA) {
-            System.out.printf("%s => %.2f%n", entry.getKey(), (Double) entry.getValue());
+            Double value = (Double) entry.getValue();
+            if (value != null) {
+                System.out.printf("%s => %.2f%n", entry.getKey(), value);
+            } else {
+                System.out.printf("%s => null%n", entry.getKey());
+            }
         }
 
         // 如果需要一个保持顺序的 Map

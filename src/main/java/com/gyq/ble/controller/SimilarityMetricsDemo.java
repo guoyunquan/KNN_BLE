@@ -34,7 +34,8 @@ public class SimilarityMetricsDemo {
 
         // 4) 计算与打印各类指标
         System.out.println("\n=== 指标（原始 dBm 向量）===");
-        System.out.printf("Cosine 余弦相似度           : %.6f%n", cosine(a, b));
+        double cosine = cosine(a, b);
+        System.out.printf("Cosine 余弦相似度           : %.6f%n",cosine);
         System.out.printf("Mean-Centered Cosine(中心化): %.6f%n", centeredCosine(a, b));
         System.out.printf("Pearson 皮尔逊相关          : %.6f%n", pearson(a, b));
         System.out.printf("Spearman 秩相关             : %.6f%n", spearman(a, b));
@@ -47,7 +48,7 @@ public class SimilarityMetricsDemo {
         double[] bMw = dbmToMilliwatt(b);
         System.out.println("\n=== 可选：转为线性功率(mW)后的相似度 ===");
         System.out.printf("Cosine(功率mW)              : %.6f%n", cosine(aMw, bMw));
-        return null;
+        return cosine;
     }
 
     /**
