@@ -131,17 +131,17 @@ public class ApiController {
         List<Map.Entry<Object, Object>> listA = new ArrayList<>(result.entrySet());
 
         // 排序（从大到小）
-        Collections.sort(listA, new Comparator<Map.Entry<Object, Object>>() {
+        listA.sort(new Comparator<Map.Entry<Object, Object>>() {
             @Override
             public int compare(Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) {
                 Double v1 = (Double) o1.getValue();
                 Double v2 = (Double) o2.getValue();
-                
+
                 // 处理 null 值：null 值排在最后
                 if (v1 == null && v2 == null) return 0;
                 if (v1 == null) return 1;  // v1 为 null，排在后面
                 if (v2 == null) return -1; // v2 为 null，v1 排在前面
-                
+
                 return v2.compareTo(v1); // 从大到小
             }
         });
@@ -164,11 +164,106 @@ public class ApiController {
         }
         System.out.println("\n有序 Map: " + sortedMap);
 
+        // 实现 KNN 相似度匹配
+        PredictResponse response = performKnnPrediction(sortedMap);
+        
+        return ResponseEntity.ok(response);
+    }
 
-//        SimilarityMetricsDemo.cosDouble(readings,)
-        return null;
+    /**
+     * 执行 KNN 相似度匹配预测
+     * 
+     * @param sortedMap 按相似度排序的结果映射
+     * @return 预测响应
+     */
+    private PredictResponse performKnnPrediction(Map<Object, Object> sortedMap) {
+        PredictResponse response = new PredictResponse();
+        
+        if (sortedMap.isEmpty()) {
+            log.warn("没有找到任何相似度数据，无法进行预测");
+            return response;
+        }
+        
+        // 提取区域名称和相似度
+        Map<String, Double> regionSimilarities = new HashMap<>();
+        
+        for (Map.Entry<Object, Object> entry : sortedMap.entrySet()) {
+            String key = (String) entry.getKey();
+            Double similarity = (Double) entry.getValue();
+            
+            if (similarity != null) {
+                // 从点位名称中提取区域名称（如 "1_3" -> "1"）
+                String regionName = extractRegionName(key);
+                if (regionName != null) {
+                    // 如果同一区域有多个点位，取最高相似度
+                    regionSimilarities.merge(regionName, similarity, Double::max);
+                }
+            }
+        }
+        
+        if (regionSimilarities.isEmpty()) {
+            log.warn("没有找到有效的区域相似度数据");
+            return response;
+        }
+        
+        // 按相似度排序区域
+        List<Map.Entry<String, Double>> regionList = new ArrayList<>(regionSimilarities.entrySet());
+        regionList.sort((e1, e2) -> Double.compare(e2.getValue(), e1.getValue())); // 从高到低排序
+        
+        // 设置 Top-1 预测结果
+        if (!regionList.isEmpty()) {
+            String topRegion = regionList.get(0).getKey();
+            try {
+                response.setRegionTop1(Integer.parseInt(topRegion));
+                log.info("Top-1 预测区域: {}, 相似度: {}", topRegion, regionList.get(0).getValue());
+            } catch (NumberFormatException e) {
+                log.warn("区域名称无法转换为整数: {}", topRegion);
+            }
+        }
+        
+        // 设置 Top-3 预测结果
+        List<PredictResponse.RegionScore> top3List = new ArrayList<>();
+        int count = Math.min(3, regionList.size());
+        for (int i = 0; i < count; i++) {
+            Map.Entry<String, Double> entry = regionList.get(i);
+            try {
+                Integer regionId = Integer.parseInt(entry.getKey());
+                Double score = entry.getValue();
+                top3List.add(new PredictResponse.RegionScore(regionId, score));
+            } catch (NumberFormatException e) {
+                log.warn("区域名称无法转换为整数: {}", entry.getKey());
+            }
+        }
+        response.setRegionTop3(top3List);
+        
+        log.info("KNN 预测完成，Top-1: {}, Top-3: {}", 
+                response.getRegionTop1(), 
+                top3List.stream().map(rs -> rs.getRegionId() + "(" + String.format("%.3f", rs.getScore()) + ")").collect(Collectors.joining(", ")));
+        
+        return response;
     }
     
+    /**
+     * 从点位名称中提取区域名称
+     * 例如: "1_3" -> "1", "2_5" -> "2"
+     * 
+     * @param pointName 点位名称
+     * @return 区域名称，如果格式不正确则返回 null
+     */
+    private String extractRegionName(String pointName) {
+        if (pointName == null || pointName.isEmpty()) {
+            return null;
+        }
+        
+        int underscoreIndex = pointName.indexOf('_');
+        if (underscoreIndex > 0) {
+            return pointName.substring(0, underscoreIndex);
+        }
+        
+        // 如果没有下划线，返回整个字符串
+        return pointName;
+    }
+
     /**
      * 热加载数据集
      * 
