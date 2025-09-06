@@ -25,73 +25,12 @@ public class ApiController {
     private final static ConcurrentHashMap<Integer, List<BeaconReading>> map = new ConcurrentHashMap<>();
     private final static ConcurrentHashMap<String,Integer> countMap = new ConcurrentHashMap<>();
     private final static ConcurrentHashMap<String,Integer> nameMap = new ConcurrentHashMap<>();
-    
-    @Autowired
-    private DatasetService datasetService;
-    
-    @Autowired
-    private KnnService knnService;
+
     
     @Autowired
     private JsonStorageService jsonStorageService;
     
-    /**
-     * 采集样本
-     * 
-     * POST /api/collect
-     */
-    @PostMapping("/collect")
-    public ResponseEntity<CollectResponse> collect(@RequestBody CollectPayload payload) {
-        try {
-            // 参数校验
-            if (payload.getRegion_id() == null) {
-                return ResponseEntity.badRequest()
-                        .body(new CollectResponse(false, 0, 0));
-            }
-            
-            if (payload.getBeacons() == null || payload.getBeacons().isEmpty()) {
-                return ResponseEntity.badRequest()
-                        .body(new CollectResponse(false, 0, 0));
-            }
-            
-            // 构造元数据
-            Map<String, Object> meta = new HashMap<>();
-            meta.put("region_id", payload.getRegion_id());
-            meta.put("x", payload.getX());
-            meta.put("y", payload.getY());
-            meta.put("device", payload.getDevice());
-            meta.put("time_slot", payload.getTime_slot());
-            meta.put("heading", payload.getHeading());
-            
-            // 构造RSSI映射
-            Map<String, Double> rssiByKey = new HashMap<>();
-            for (BeaconReading beacon : payload.getBeacons()) {
-                if (beacon.getUuid() != null && beacon.getMajor() != null && 
-                    beacon.getMinor() != null && beacon.getRssi() != null) {
-                    String key = datasetService.keyOf(beacon.getUuid(), beacon.getMajor(), beacon.getMinor());
-                    rssiByKey.put(key, beacon.getRssi().doubleValue());
-                }
-            }
-            
-            // 保存样本
-            datasetService.appendSample(meta, rssiByKey);
-            
-            // 返回响应
-            CollectResponse response = new CollectResponse(
-                    true, 
-                    1, 
-                    datasetService.getBeaconColumnCount()
-            );
-            
-            log.info("样本采集成功，区域ID: {}, 信标数: {}", payload.getRegion_id(), payload.getBeacons().size());
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            log.error("样本采集失败", e);
-            return ResponseEntity.internalServerError()
-                    .body(new CollectResponse(false, 0, 0));
-        }
-    }
+
     
     /**
      * 区域预测
@@ -264,56 +203,7 @@ public class ApiController {
         return pointName;
     }
 
-    /**
-     * 热加载数据集
-     * 
-     * GET /api/reload
-     */
-    @GetMapping("/reload")
-    public ResponseEntity<ReloadResponse> reload() {
-        try {
-            datasetService.load();
-            
-            ReloadResponse response = new ReloadResponse(
-                    true,
-                    datasetService.getBeaconColumnCount(),
-                    datasetService.getSampleCount()
-            );
-            
-            log.info("数据集重载成功，信标列数: {}, 样本数: {}", 
-                    response.getBeaconCols(), response.getSamples());
-            
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            log.error("数据集重载失败", e);
-            return ResponseEntity.internalServerError()
-                    .body(new ReloadResponse(false, 0, 0));
-        }
-    }
-    
-    /**
-     * 健康检查
-     * 
-     * GET /api/health
-     */
-    @GetMapping("/health")
-    public ResponseEntity<HealthResponse> health() {
-        try {
-            HealthResponse response = new HealthResponse(
-                    "UP",
-                    datasetService.getBeaconColumnCount(),
-                    datasetService.getSampleCount()
-            );
-            
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            log.error("健康检查失败", e);
-            return ResponseEntity.internalServerError()
-                    .body(new HealthResponse("DOWN", 0, 0));
-        }
-    }
+
 
 
     /**
@@ -382,11 +272,7 @@ public class ApiController {
         return ResponseEntity.ok().build();
     }
 
-//    @PostMapping("/getTopk")
-//    public ResponseEntity<Void> getTopk(BeaconDto beaconDto)
-//
-//
-//    }
+
 
     /** 组装唯一 key：uuid_minor_major */
     private static String buildKey(BeaconReading item) {
@@ -405,56 +291,7 @@ public class ApiController {
         }
     }
 
-    /**
-     * 获取所有已保存的 medianMap 数据
-     * 
-     * GET /api/medianData
-     */
-    @GetMapping("/medianData")
-    public ResponseEntity<Map<String, Map<String, Double>>> getAllMedianData() {
-        try {
-            Map<String, Map<String, Double>> allData = jsonStorageService.loadAllData();
-            return ResponseEntity.ok(allData);
-        } catch (Exception e) {
-            log.error("获取 medianMap 数据失败", e);
-            return ResponseEntity.internalServerError().body(new HashMap<>());
-        }
-    }
 
-    /**
-     * 根据 key 获取特定的 medianMap 数据
-     * 
-     * GET /api/medianData/{key}
-     */
-    @GetMapping("/medianData/{key}")
-    public ResponseEntity<Map<String, Double>> getMedianData(@PathVariable String key) {
-        try {
-            Map<String, Double> data = jsonStorageService.loadMedianData(key);
-            if (data.isEmpty()) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(data);
-        } catch (Exception e) {
-            log.error("获取 medianMap 数据失败，key: {}", key, e);
-            return ResponseEntity.internalServerError().body(new HashMap<>());
-        }
-    }
-
-    /**
-     * 删除指定的 medianMap 数据
-     * 
-     * DELETE /api/medianData/{key}
-     */
-    @DeleteMapping("/medianData/{key}")
-    public ResponseEntity<Void> deleteMedianData(@PathVariable String key) {
-        try {
-            jsonStorageService.deleteMedianData(key);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            log.error("删除 medianMap 数据失败，key: {}", key, e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
 
 
 
@@ -558,134 +395,11 @@ public class ApiController {
             return dot / (Math.sqrt(na) * Math.sqrt(nb));
         }
 
-    /**
-     * 获取两个JSON中的共同ID（交集）
-     * @param jsonStr1 第一个JSON字符串
-     * @param jsonStr2 第二个JSON字符串
-     * @return 共同ID的集合
-     */
-    public static Set<String> getCommonKeys(String jsonStr1, String jsonStr2) {
-        JSONObject json1 = JSON.parseObject(jsonStr1);
-        JSONObject json2 = JSON.parseObject(jsonStr2);
 
-        // 获取两个JSON的所有键
-        Set<String> keys1 = json1.keySet();
-        Set<String> keys2 = json2.keySet();
 
-        // 求交集
-        Set<String> commonKeys = new HashSet<>(keys1);
-        commonKeys.retainAll(keys2);
 
-        return commonKeys;
-    }
 
-    /**
-     * 根据共同ID将JSON转换为向量
-     * @param jsonStr JSON字符串
-     * @param commonKeys 共同ID的集合
-     * @return 按照共同ID顺序排列的向量
-     */
-    public static double[] jsonToVectorWithCommonKeys(String jsonStr, Set<String> commonKeys) {
-        JSONObject jsonObject = JSON.parseObject(jsonStr);
 
-        // 创建向量
-        double[] vector = new double[commonKeys.size()];
-        int index = 0;
 
-        // 按照共同ID的顺序填充向量
-        for (String key : commonKeys) {
-            vector[index++] = ((Number) jsonObject.get(key)).doubleValue();
-        }
-
-        return vector;
-    }
-
-    /**
-     * 计算两个向量的余弦相似度
-     * @param vectorA 第一个向量
-     * @param vectorB 第二个向量
-     * @return 余弦相似度值，范围在[-1,1]之间
-     * @throws IllegalArgumentException 如果向量长度不同或为空
-     */
-    public static double calculateCosineSimilarity(double[] vectorA, double[] vectorB) {
-        // 检查向量是否为空
-        if (vectorA == null || vectorB == null) {
-            throw new IllegalArgumentException(";向量不能为null");
-        }
-
-        // 检查向量长度是否相同
-        if (vectorA.length != vectorB.length) {
-            throw new IllegalArgumentException(";向量长度必须相同");
-        }
-
-        double dotProduct = 0.0;
-        double normA = 0.0;
-        double normB = 0.0;
-
-        for (int i = 0; i < vectorA.length; i++) {
-            dotProduct += vectorA[i] * vectorB[i];
-            normA += Math.pow(vectorA[i], 2);
-            normB += Math.pow(vectorB[i], 2);
-        }
-
-        // 避免除以零
-        if (normA == 0 || normB == 0) {
-            return 0.0;
-        }
-
-        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-    }
-
-    /**
-     * 计算两个JSON字符串基于共同ID的余弦相似度
-     * @param jsonStr1 第一个JSON字符串
-     * @param jsonStr2 第二个JSON字符串
-     * @return 余弦相似度值
-     */
-    public static double calculateJsonSimilarityWithCommonKeys(String jsonStr1, String jsonStr2) {
-        // 获取共同ID
-        Set<String> commonKeys = getCommonKeys(jsonStr1, jsonStr2);
-
-        // 如果没有共同ID，返回0
-        if (commonKeys.isEmpty()) {
-            return 0.0;
-        }
-
-        // 转换为向量
-        double[] vector1 = jsonToVectorWithCommonKeys(jsonStr1, commonKeys);
-        double[] vector2 = jsonToVectorWithCommonKeys(jsonStr2, commonKeys);
-
-        // 计算相似度
-        return calculateCosineSimilarity(vector1, vector2);
-    }
-
-    public static double calculate(double[] vectorA, double[] vectorB) {
-        // 检查向量是否为空
-        if (vectorA == null || vectorB == null) {
-            throw new IllegalArgumentException("向量不能为null");
-        }
-
-        // 检查向量长度是否相同
-        if (vectorA.length != vectorB.length) {
-            throw new IllegalArgumentException("向量长度必须相同");
-        }
-
-        double dotProduct = 0.0;
-        double normA = 0.0;
-        double normB = 0.0;
-
-        for (int i = 0; i < vectorA.length; i++) {
-            dotProduct += vectorA[i] * vectorB[i];
-            normA += Math.pow(vectorA[i], 2);
-            normB += Math.pow(vectorB[i], 2);
-        }
-
-        // 避免除以零
-        if (normA == 0 || normB == 0) {
-            return 0.0;
-        }
-
-        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-    }
     }
 
