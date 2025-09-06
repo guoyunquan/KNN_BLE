@@ -19,6 +19,11 @@ public class SimilarityMetricsDemo {
             System.out.println("没有共同ID，无法比较。");
             return null;
         }
+        if ( commonKeys.size()==1) {
+            System.out.println("只有一组共同ID，不进行比较。");
+            return null;
+        }
+
 
         // 3) 映射为向量（按相同顺序）
         double[] a = toVector(mapA, commonKeys);
